@@ -944,7 +944,7 @@ function tick(now){
     if (k >= 1){ cam.flight = null; cam.mode = F.mode; if (F.mode === 'seat'){ const d = F.l1.clone().sub(F.p1).normalize(); cam.yaw = Math.atan2(d.z,d.x); cam.pitch = Math.asin(d.y); cam.fov = 60; } else cam.fov = 50; }
   } else if (cam.mode === 'orbit'){ camera.position.copy(orbitPos(cam)); camera.lookAt(cam.target); if (camera.fov !== cam.fov){ camera.fov = cam.fov; camera.updateProjectionMatrix(); } }
   else { const d = new THREE.Vector3(Math.cos(cam.pitch)*Math.cos(cam.yaw), Math.sin(cam.pitch), Math.cos(cam.pitch)*Math.sin(cam.yaw)); camera.lookAt(camera.position.clone().add(d)); if (camera.fov !== cam.fov){ camera.fov = cam.fov; camera.updateProjectionMatrix(); } }
-  if (labelGroup) labelGroup.visible = painting || cam.mode === 'orbit' || (cam.flight && cam.flight.mode === 'orbit');
+  if (labelGroup) labelGroup.visible = painting || (cam.flight ? cam.flight.mode : cam.mode) === 'orbit';
   if (!reduce){
     if (++frame % 4 === 0) drawLED(t);
     cones.forEach(p => { p.rotation.z = Math.sin(t*.7 + p.userData.phase)*.45; p.rotation.x = .25 + Math.sin(t*.5 + p.userData.phase)*.2; });
