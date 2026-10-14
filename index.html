@@ -1,3 +1,8 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SeatPOV Malaysia</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="description" content="Free 3D seat-view previews for Malaysian concert venues: TM Stadium Nasional, Unifi Arena (formerly Axiata Arena) and Zepp KL. Find your CAT, section, row and seat.">
@@ -22,8 +27,10 @@
   color-scheme:dark;
 }
 *,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{height:100%}
-body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45}
+img{max-width:100%}
 .app{display:grid;grid-template-columns:minmax(0,1fr) 372px;height:100%}
 .view{position:relative;min-width:0;min-height:0;background:#07060b;overflow:hidden}
 #c{display:block;width:100%;height:100%;touch-action:none;cursor:grab;outline:none}
@@ -101,6 +108,14 @@ textarea{font:400 12px var(--mono);resize:vertical;min-height:64px}
 .fine{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:14px;margin:0}
 .toast{font-size:12.5px;color:var(--accent);min-height:1.2em;margin:6px 0 0}
 details>summary{cursor:pointer;font-size:13px;color:var(--muted);margin-top:10px}
+.stagebox{border:1px solid var(--line);border-radius:10px;padding:12px;margin:14px 0 0;display:grid;gap:10px;min-width:0}
+.stagebox legend{padding:0 6px;margin:0}
+.stagebox .fld span{display:flex;justify-content:space-between;gap:8px}
+.stagebox .fld b{font:500 12px var(--mono);color:var(--fg)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.chk{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer}
+.chk input{accent-color:var(--accent);width:16px;height:16px}
+.stagebox[disabled]{opacity:.55}
 
 @media (max-width:860px){
   .app{grid-template-columns:1fr;grid-template-rows:60vh auto;height:auto;min-height:100%}
@@ -112,7 +127,8 @@ details>summary{cursor:pointer;font-size:13px;color:var(--muted);margin-top:10px
 }
 @media (prefers-reduced-motion:reduce){.bar>div{transition:none}}
 </style>
-
+</head>
+<body>
 <div class="app">
   <div class="view" id="view">
     <canvas id="c" tabindex="0" aria-label="3D view of the selected venue. Drag to look around, scroll or pinch to zoom, click a seat to sit there."></canvas>
@@ -185,6 +201,17 @@ details>summary{cursor:pointer;font-size:13px;color:var(--muted);margin-top:10px
           <button class="btn sm" type="button" id="flip">Reverse</button>
         </div>
         <label class="fld" style="margin-top:12px"><span>Organiser seat plan (image)</span><input id="lImg" type="file" accept="image/*"></label>
+        <fieldset class="stagebox" id="stageBox">
+          <legend class="label">Stage and floor</legend>
+          <label class="fld"><span>Stage type</span><select id="sType"><option value="end">End stage</option><option value="runway">End stage with runway</option><option value="centre">Centre stage (in the round)</option></select></label>
+          <label class="fld"><span>Stage width <b id="sWv"></b></span><input type="range" id="sW" step="1"></label>
+          <label class="fld" id="sDf"><span>Stage depth <b id="sDv"></b></span><input type="range" id="sD" step="1"></label>
+          <label class="fld" id="sRf"><span>Runway length <b id="sRv"></b></span><input type="range" id="sR" step="1"></label>
+          <label class="fld"><span>Floor zones</span><select id="fzN"><option value="1">1 zone</option><option value="2">2 zones</option><option value="3">3 zones</option><option value="4">4 zones</option></select></label>
+          <label class="chk"><input type="checkbox" id="fzSplit"> Split floor zones into left and right</label>
+          <label class="chk"><input type="checkbox" id="fzSeat"> Seated floor (not standing)</label>
+          <button class="btn sm" type="button" id="autoClose">Close sections behind the stage</button>
+        </fieldset>
       </div>
       <details>
         <summary>Share or load a layout code</summary>
@@ -213,7 +240,7 @@ details>summary{cursor:pointer;font-size:13px;color:var(--muted);margin-top:10px
       <ul class="how">
         <li>Drag to look around. Scroll or pinch to zoom like a phone camera.</li>
         <li>Click any seat to sit there. The panel shows its CAT, section, row and seat.</li>
-        <li>For a specific concert, press New, upload the organiser's seat plan, then paint each section with its CAT.</li>
+        <li>For a specific concert, press New and upload the organiser's seat plan. Set the stage and floor to match it, then paint each section with its CAT.</li>
         <li>If section numbers sit in the wrong place, use Rotate or Reverse to line them up with the plan.</li>
       </ul>
     </section>
@@ -312,7 +339,7 @@ const VENUES = {
     floorZ:15,
     overview:{target:[0,4,0],r:52,phi:.9,theta:.8},
     quick:[
-      {name:'Floor front, at the barrier', floor:'FA', at:[-9.4,1.5]},{name:'Floor rear, under balcony', floor:'FB', at:[11,0]},
+      {name:'Floor front, at the barrier', floor:'FA', barrier:true},{name:'Floor rear, under balcony', floor:'FB', at:[11,0]},
       {name:'Balcony Centre, row A', sec:'Balcony Centre', row:0, seat:4},{name:'Balcony Left, back row', sec:'Balcony Left', row:7, seat:2},
       {name:'VIP Box 4 (nearest stage)', sec:'VIP Box 4', row:0, seat:0}
     ]
@@ -429,46 +456,82 @@ function drawLED(t){
   x.fillStyle = '#fff'; x.font = '600 22px sans-serif'; x.textAlign = 'center'; x.fillText('LIVE IN MALAYSIA',128,54);
   led.tex.needsUpdate = true;
 }
-function buildStage(g, S, nCones){
-  const front = S.back + S.depth, mid = S.back + S.depth/2;
-  g.add(box(S.depth, S.h, S.width, 0x1a1720, mid, S.h/2, 0));
-  g.add(box(S.depth*.9, .08, S.width*.95, 0x2b2733, mid, S.h+.04, 0));
-  if (S.runway){ g.add(box(S.runway, S.h, 6, 0x1a1720, front+S.runway/2, S.h/2, 0)); g.add(box(8, S.h, 14, 0x1a1720, front+S.runway, S.h/2, 0)); }
-  const c = document.createElement('canvas'); c.width = 256; c.height = 128; led = {ctx:c.getContext('2d'), tex:new THREE.CanvasTexture(c)}; drawLED(0);
-  const scrMat = new THREE.MeshBasicMaterial({map:led.tex});
-  const scr = new THREE.Mesh(new THREE.PlaneGeometry(S.screenW, S.screenH), scrMat); scr.rotation.y = Math.PI/2; scr.position.set(S.back+.6, S.h+1+S.screenH/2, 0); g.add(scr);
-  g.add(box(.6, S.screenH+2, S.screenW+2, 0x0b0a0f, S.back+.2, S.h+1+S.screenH/2, 0));
-  if (S.side){ const sw = S.screenW*.32, sh = S.screenH*.7; [-1,1].forEach(s => { const m = new THREE.Mesh(new THREE.PlaneGeometry(sw,sh), scrMat); m.rotation.y = Math.PI/2 - s*.35; m.position.set(S.back+3, S.h+2+sh/2, s*(S.width/2+sw/2-2)); g.add(m); }); }
-  const top = S.h + S.screenH + 4, tw = .8;
-  [-1,1].forEach(s => { g.add(box(tw,top,tw,0x3a3644, front-1, top/2, s*S.width/2)); g.add(box(tw,top,tw,0x3a3644, S.back+1.5, top/2, s*S.width/2)); g.add(box(S.depth,tw,tw,0x3a3644, mid, top, s*S.width/2)); });
-  g.add(box(tw,tw,S.width,0x3a3644, front-1, top, 0));
-  cones = []; const cols = [0xffc46b,0xff6fa0,0x8fd3ff], len = top*1.25;
-  for (let i=0;i<nCones;i++){
-    const piv = new THREE.Group(); piv.position.set(front-1, top-.5, -S.width/2 + (i+.5)*S.width/nCones);
+function makeLED(){ const c = document.createElement('canvas'); c.width = 256; c.height = 128; led = {ctx:c.getContext('2d'), tex:new THREE.CanvasTexture(c)}; drawLED(0); return new THREE.MeshBasicMaterial({map:led.tex}); }
+function addCones(g, spots, len){
+  cones = []; const cols = [0xffc46b,0xff6fa0,0x8fd3ff];
+  spots.forEach((p,i) => {
+    const piv = new THREE.Group(); piv.position.set(p[0], p[1], p[2]);
     const cone = new THREE.Mesh(new THREE.ConeGeometry(len*.18, len, 24, 1, true), new THREE.MeshBasicMaterial({color:cols[i%3], transparent:true, opacity:.075, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide}));
     cone.position.y = -len/2; piv.add(cone); piv.userData.phase = i*1.3; g.add(piv); cones.push(piv);
+  });
+}
+function buildStage(g, S, nCones){
+  const tw = .8, TR = 0x3a3644, DECK = 0x1a1720;
+  if (S.type === 'centre'){
+    const cx = S.cx, w = S.width, cw = S.cubeW, ch = S.cubeH, cy = S.cubeY;
+    g.add(box(w, S.h, w, DECK, cx, S.h/2, 0));
+    g.add(box(w*.95, .08, w*.95, 0x2b2733, cx, S.h+.04, 0));
+    const mat = makeLED();
+    [[cw/2,0,Math.PI/2],[-cw/2,0,-Math.PI/2],[0,cw/2,0],[0,-cw/2,Math.PI]].forEach(([dx,dz,ry]) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(cw, ch), mat); m.rotation.y = ry; m.position.set(cx+dx, cy, dz); g.add(m); });
+    g.add(box(cw-.2, ch-.1, cw-.2, 0x0b0a0f, cx, cy, 0));
+    const top = cy + ch/2 + 3;
+    g.add(box(.3, top-cy-ch/2, .3, TR, cx, (top+cy+ch/2)/2, 0));
+    [-1,1].forEach(s2 => { g.add(box(w, tw, tw, TR, cx, top, s2*w/2)); g.add(box(tw, tw, w, TR, cx + s2*w/2, top, 0)); g.add(box(tw, top, tw, TR, cx + s2*w/2, top/2, w/2)); g.add(box(tw, top, tw, TR, cx + s2*w/2, top/2, -w/2)); });
+    const spots = []; for (let i=0;i<nCones;i++){ const a = i/nCones*TAU; spots.push([cx + Math.cos(a)*w/2, top-.5, Math.sin(a)*w/2]); }
+    addCones(g, spots, top*1.25);
+    const pl = new THREE.PointLight(0xffc98a, 1.1, w*5); pl.position.set(cx, top, 0); g.add(pl);
+    return;
   }
+  const front = S.back + S.depth, mid = S.back + S.depth/2;
+  g.add(box(S.depth, S.h, S.width, DECK, mid, S.h/2, 0));
+  g.add(box(S.depth*.9, .08, S.width*.95, 0x2b2733, mid, S.h+.04, 0));
+  if (S.runway){ const rw = Math.max(3, S.width*.09); g.add(box(S.runway, S.h, rw, DECK, front+S.runway/2, S.h/2, 0)); g.add(box(rw*1.4, S.h, rw*2.3, DECK, front+S.runway, S.h/2, 0)); }
+  const scrMat = makeLED();
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(S.screenW, S.screenH), scrMat); scr.rotation.y = Math.PI/2; scr.position.set(S.back+.6, S.h+1+S.screenH/2, 0); g.add(scr);
+  g.add(box(.6, S.screenH+2, S.screenW+2, 0x0b0a0f, S.back+.2, S.h+1+S.screenH/2, 0));
+  if (S.side){ const sw = S.screenW*.32, sh = S.screenH*.7; [-1,1].forEach(s2 => { const m = new THREE.Mesh(new THREE.PlaneGeometry(sw,sh), scrMat); m.rotation.y = Math.PI/2 - s2*.35; m.position.set(S.back+3, S.h+2+sh/2, s2*(S.width/2+sw/2-2)); g.add(m); }); }
+  const top = S.h + S.screenH + 4;
+  [-1,1].forEach(s2 => { g.add(box(tw,top,tw,TR, front-1, top/2, s2*S.width/2)); g.add(box(tw,top,tw,TR, S.back+1.5, top/2, s2*S.width/2)); g.add(box(S.depth,tw,tw,TR, mid, top, s2*S.width/2)); });
+  g.add(box(tw,tw,S.width,TR, front-1, top, 0));
+  const spots = []; for (let i=0;i<nCones;i++) spots.push([front-1, top-.5, -S.width/2 + (i+.5)*S.width/nCones]);
+  addCones(g, spots, top*1.25);
+  g.add(box(.15, 1.1, S.width, 0x8a8494, front + 1.1, .55, 0));
   const pl = new THREE.PointLight(0xffc98a, 1.1, S.width*3); pl.position.set(front+4, top, 0); g.add(pl);
 }
 const dotTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); const g = x.createRadialGradient(32,32,0,32,32,32); g.addColorStop(0,'rgba(255,255,255,1)'); g.addColorStop(.35,'rgba(255,255,255,.6)'); g.addColorStop(1,'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); })();
-let sticks = null;
+let stickSets = [], dynSticks = null;
 function addSticks(g, pts, size){
   const pos = [], col = [], pal = [[1,.75,.35],[1,.4,.65],[.55,.8,1],[.85,.6,1],[1,1,1]];
   pts.forEach(p => { pos.push(p[0],p[1],p[2]); col.push(...pal[(Math.random()*pal.length)|0]); });
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col,3));
-  sticks = new THREE.Points(geo, new THREE.PointsMaterial({size, map:dotTex, vertexColors:true, transparent:true, opacity:.85, blending:THREE.AdditiveBlending, depthWrite:false}));
-  g.add(sticks);
+  const pts3 = new THREE.Points(geo, new THREE.PointsMaterial({size, map:dotTex, vertexColors:true, transparent:true, opacity:.85, blending:THREE.AdditiveBlending, depthWrite:false}));
+  g.add(pts3); return pts3;
 }
 
 /* ================= scene build ================= */
-let group = null, pickables = [], recolorers = [], floorMeshes = [], labelGroup = null;
-function stageInfo(v){ const S = v.stage; v.stageFront = new THREE.Vector3(S.back+S.depth, S.h, 0); v.screenPos = new THREE.Vector3(S.back+.6, S.h+1+S.screenH/2, 0); v.look = new THREE.Vector3(S.back+S.depth*.5, S.h+S.screenH*.42, 0); }
-function addFloorZones(v, g, y){
+let group = null, pickables = [], basePick = [], recolorers = [], floorMeshes = [], labelGroup = null, dyn = null;
+function stageInfo(v){
+  const S = effStage(); v.effS = S;
+  if (S.type === 'centre'){ v.stageFront = new THREE.Vector3(S.cx, S.h, 0); v.screenPos = new THREE.Vector3(S.cx, S.cubeY, 0); v.look = new THREE.Vector3(S.cx, S.h + 3, 0); }
+  else { v.stageFront = new THREE.Vector3(S.front, S.h, 0); v.screenPos = new THREE.Vector3(S.back+.6, S.h+1+S.screenH/2, 0); v.look = new THREE.Vector3(S.back+S.depth*.5, S.h+S.screenH*.42, 0); }
+}
+function rebuildDynamic(){
+  const v = current;
+  if (dyn){ group.remove(dyn); disposeTree(dyn); }
+  dyn = new THREE.Group(); group.add(dyn); led = null; cones = [];
+  stageInfo(v);
+  buildStage(dyn, v.effS, v.id === 'stadium' ? 8 : v.id === 'arena' ? 6 : 5);
   floorMeshes = [];
-  v.floorZones.forEach(fz => {
-    const m = flat(fz.x1-fz.x0-.4, v.floorZ*2, 0x34303c, (fz.x0+fz.x1)/2, y, 0);
-    m.userData = {kind:'floor', key:fz.key, fz}; g.add(m); pickables.push(m); floorMeshes.push(m);
-  });
+  const y = v.id === 'zepp' ? .02 : .07, zs = zones();
+  zs.forEach(fz => { const m = flat(fz.x1-fz.x0-.4, fz.z1-fz.z0-.4, 0x34303c, (fz.x0+fz.x1)/2, y, (fz.z0+fz.z1)/2); m.userData = {kind:'floor', key:fz.key, fz}; dyn.add(m); floorMeshes.push(m); });
+  pickables = [...basePick, ...floorMeshes];
+  const pts = [], n = v.id === 'stadium' ? 2100 : v.id === 'arena' ? 900 : 1400, h = floorSeated() ? 1.25 : 1.7;
+  let guard = 0;
+  while (pts.length < n && guard++ < n*5){
+    const fz = zs[(Math.random()*zs.length)|0], x = fz.x0 + .5 + Math.random()*(fz.x1-fz.x0-1), z = fz.z0 + .5 + Math.random()*(fz.z1-fz.z0-1);
+    if (!onStage(x, z)) pts.push([x, h, z]);
+  }
+  dynSticks = addSticks(dyn, pts, v.id === 'stadium' ? .9 : v.id === 'arena' ? .55 : .22);
 }
 function buildBowlVenue(v, g){
   const L = v.loop;
@@ -487,11 +550,8 @@ function buildBowlVenue(v, g){
     const rm = new THREE.Mesh(new THREE.ShapeGeometry(roof), new THREE.MeshLambertMaterial({color:0x221e2c})); rm.rotation.x = Math.PI/2; rm.position.y = v.roof; g.add(rm);
   }
   if (v.ceiling){ const cm = flat(200,140,0x141119,0,v.ceiling,0); cm.rotation.x = Math.PI/2; g.add(cm); }
-  addFloorZones(v, g, .07);
   v.tiers.forEach((T,ti) => { const m = buildBowl(v, ti); g.add(m); pickables.push(m); recolorers.push(m.userData.recolor); });
-  buildStage(g, v.stage, v.sky ? 8 : 6);
-  const pts = [], n = v.sky ? 6000 : 2600;
-  v.floorZones.forEach(fz => { for (let i=0;i<n*.35/v.floorZones.length;i++) pts.push([fz.x0+1+Math.random()*(fz.x1-fz.x0-2), 1.7, (Math.random()*2-1)*(v.floorZ-1)]); });
+  const pts = [], n = v.sky ? 4000 : 1700;
   let guard = 0;
   while (pts.length < n && guard++ < n*6){
     const ti = (Math.random()*v.tiers.length)|0, T = v.tiers[ti], t = Math.random()*TAU;
@@ -499,18 +559,16 @@ function buildBowlVenue(v, g){
     const r = (Math.random()*T.rows)|0, d = T.d0+(r+.5)*T.rowDepth, [x,z] = loopPt(v.loop.a+d, v.loop.b+d, v.loop.n, t);
     pts.push([x, T.y0+r*T.rise+.9, z]);
   }
-  addSticks(g, pts, v.sky ? .9 : .55);
+  stickSets.push(addSticks(g, pts, v.sky ? .9 : .55));
 }
 function buildZepp(v, g){
   scene.background = new THREE.Color(0x06050a);
   const W = 15, X0 = -18, X1 = 18, H = 14;
   g.add(flat(X1-X0, W*2, 0x221f28, 0, 0, 0));
-  addFloorZones(v, g, .02);
   const wallMat = new THREE.MeshLambertMaterial({color:0x17141d});
   const wall = (w,x,z,ry) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w,H), wallMat); m.position.set(x,H/2,z); m.rotation.y = ry; g.add(m); };
   wall(W*2,X0,0,Math.PI/2); wall(W*2,X1,0,-Math.PI/2); wall(X1-X0,0,-W,0); wall(X1-X0,0,W,Math.PI);
   const ceil = flat(X1-X0, W*2, 0x100e15, 0, H, 0); ceil.rotation.x = Math.PI/2; g.add(ceil);
-  g.add(box(.15,1.1,22,0x8a8494,-9.9,.55,0));
   g.add(box(.12,1,9,0x8a8494,0,.5,-7)); g.add(box(.12,1,9,0x8a8494,0,.5,7));
   const B = v.balc, pos = [], col = [], treads = [];
   const quad = (p1,p2,p3,p4,c) => { pos.push(...p1,...p2,...p3,...p1,...p3,...p4); for (let i=0;i<6;i++) col.push(c[0],c[1],c[2]); };
@@ -540,11 +598,9 @@ function buildZepp(v, g){
     g.add(box(.12,.9,2.4,0x241f2b,bx.x-1.45,5.6,bx.z));
     recolorers.push(() => { const c = catOf('VIP Box '+bx.n); slab.material.color.set(!c ? NONE_HEX : c.color); });
   });
-  buildStage(g, v.stage, 5);
   const pts = [];
-  for (let i=0;i<1400;i++) pts.push([-9+Math.random()*26, 1.7, (Math.random()*2-1)*14]);
   for (let i=0;i<220;i++) pts.push([B.x0+.4+((Math.random()*B.rows)|0)*B.rowDepth, 7.1+Math.random()*3.2, (Math.random()*2-1)*12.5]);
-  addSticks(g, pts, .22);
+  stickSets.push(addSticks(g, pts, .22));
 }
 VENUES.zepp.balc = { x0:8, rows:8, rowDepth:.95, rise:.45, y0:6.2, seats:9,
   blocks:[{name:'Balcony Left', z0:4.6, z1:13},{name:'Balcony Centre', z0:-4.2, z1:4.2},{name:'Balcony Right', z0:-13, z1:-4.6}] };
@@ -552,6 +608,53 @@ VENUES.zepp.boxes = [
   {n:1,x:4.5,z:13.8,top:5.15},{n:2,x:1.5,z:13.8,top:5.15},{n:3,x:-1.5,z:13.8,top:5.15},{n:4,x:-4.5,z:13.8,top:5.15},
   {n:5,x:4.5,z:-13.8,top:5.15},{n:6,x:1.5,z:-13.8,top:5.15},{n:7,x:-1.5,z:-13.8,top:5.15},{n:8,x:-4.5,z:-13.8,top:5.15}
 ];
+
+VENUES.stadium.floorArea = {xa:-62, xb:45, cx:0};
+VENUES.arena.floorArea = {xa:-33, xb:34, cx:0};
+VENUES.zepp.floorArea = {xa:-11, xb:18, cx:0, noCentre:true};
+VENUES.stadium.stageRange = {w:[30,90], d:[12,30], r:[0,60]};
+VENUES.arena.stageRange = {w:[12,34], d:[6,18], r:[0,30]};
+VENUES.zepp.stageRange = {w:[12,26], d:[4,9], r:[0,10]};
+
+/* ================= effective stage and floor (from the layout) ================= */
+function effStage(){
+  const v = current, d = v.stage, L = (layout && layout.stage) || {};
+  const S = {...d, type: L.type || (d.runway ? 'runway' : 'end')};
+  if (v.floorArea.noCentre && S.type === 'centre') S.type = 'end';
+  if (L.width) S.width = L.width; else if (S.type === 'centre') S.width = Math.max(v.stageRange.w[0], Math.round(d.width*.45));
+  if (L.depth) S.depth = L.depth;
+  S.runway = S.type === 'runway' ? (L.runway != null ? L.runway : (d.runway || Math.round(S.width*.4))) : 0;
+  S.screenW = d.screenW * Math.min(1.2, Math.max(.6, S.width/d.width));
+  if (S.type === 'centre'){
+    S.width = Math.min(S.width, v.floorZ*2 - 6); S.cx = v.floorArea.cx;
+    S.cubeW = Math.max(6, Math.min(16, S.width*.5)); S.cubeH = S.cubeW*.56; S.cubeY = S.h + 6 + S.cubeH/2 + S.width*.12;
+  }
+  S.front = S.type === 'centre' ? null : S.back + S.depth;
+  return S;
+}
+function zones(){
+  const v = current, F = layout && layout.floor;
+  if (!F) return v.floorZones.map(z => ({...z, z0:-v.floorZ, z1:v.floorZ}));
+  const S = effStage(), A = v.floorArea, x0 = S.type === 'centre' ? A.xa : S.back + S.depth, x1 = A.xb;
+  const n = Math.max(1, Math.min(4, +F.count || 1)), out = [];
+  for (let i=0;i<n;i++){
+    const a = x0 + (x1-x0)*i/n, b = x0 + (x1-x0)*(i+1)/n, Lt = 'ABCD'[i];
+    if (F.split){
+      out.push({key:'F'+(i+1)+'L', name:`Floor ${Lt} Left`, x0:a, x1:b, z0:.3, z1:v.floorZ});
+      out.push({key:'F'+(i+1)+'R', name:`Floor ${Lt} Right`, x0:a, x1:b, z0:-v.floorZ, z1:-.3});
+    } else out.push({key:'F'+(i+1), name:`Floor ${Lt}`, x0:a, x1:b, z0:-v.floorZ, z1:v.floorZ});
+  }
+  return out;
+}
+const floorSeated = () => !!(layout && layout.floor && layout.floor.seated);
+const floorEye = () => floorSeated() ? 1.25 : 1.72;
+function onStage(x, z){
+  const S = current.effS || effStage();
+  if (S.type === 'centre') return Math.abs(x - S.cx) < S.width/2 + .5 && Math.abs(z) < S.width/2 + .5;
+  if (x < S.front + .3 && Math.abs(z) < S.width/2 + .5) return true;
+  if (S.runway){ const rw = Math.max(3, S.width*.09); if (x < S.front + S.runway + rw*1.2 && Math.abs(z) < rw*1.2) return true; }
+  return false;
+}
 
 /* ================= section labels in 3D ================= */
 function labelSprite(text, bg, scale){
@@ -573,7 +676,7 @@ function rebuildLabels(){
     const p = seatPos(v, s, mid, s.kind === 'bowl' ? Math.floor(seatCount(v,s,mid)/2) : s.kind === 'balc' ? 4 : 1).pos;
     const sp = labelSprite(s.label, bg, s.kind === 'box' ? sc*.8 : sc); sp.position.set(p.x, p.y + sc*.9, p.z); labelGroup.add(sp);
   });
-  v.floorZones.forEach(fz => { const c = catOf(fz.key); const sp = labelSprite(fz.name, !c ? NONE_HEX : c.color, sc); sp.position.set((fz.x0+fz.x1)/2, sc*.8, 0); labelGroup.add(sp); });
+  zones().forEach(fz => { const c = catOf(fz.key); const sp = labelSprite(fz.name, !c ? NONE_HEX : c.color, sc); sp.position.set((fz.x0+fz.x1)/2, sc*.8, (fz.z0+fz.z1)/2); labelGroup.add(sp); });
 }
 function recolorAll(){
   recolorers.forEach(f => f());
@@ -608,7 +711,8 @@ function getLayout(id){ return id && id.startsWith('example-') ? current.example
 function setLayout(id){
   const L = getLayout(id) || current.example;
   layout = L; curId = L.id; store.sel[current.id] = L.id; persist();
-  buildSections(current); recolorAll(); fillLayoutUI(); fillFindForm(); renderQuick(); updatePlan();
+  buildSections(current); rebuildDynamic(); recolorAll(); fillLayoutUI(); fillStageUI(); fillFindForm(); renderQuick(); updatePlan();
+  if (lastAddr && lastAddr.floor){ const z = zones().find(q => q.key === lastAddr.floor.key); lastAddr = z ? {floor:z} : null; }
   if (lastAddr) showAddress(lastAddr, false);
 }
 function cloneToCustom(base, name){
@@ -642,18 +746,31 @@ function setChip(){
 /* ================= addresses & readout ================= */
 let lastAddr = null;
 function addrTitle(a){
-  if (a.floor) return a.floor.name;
+  if (a.floor) return a.floor.name + (floorSeated() ? ' (seated)' : '');
   if (a.sec.kind === 'box') return `${a.sec.label} · Seat ${a.seat+1}`;
   return `${a.sec.kind === 'bowl' ? 'Section ' : ''}${a.sec.label} · Row ${rowLabel(current,a.sec,a.row)} · Seat ${a.seat+1}`;
 }
 function addrPos(a){
-  if (a.floor){ const fz = a.floor; return new THREE.Vector3(a.at ? a.at[0] : (fz.x0+fz.x1)/2, 1.72, a.at ? a.at[1] : 0); }
+  if (a.floor){
+    const fz = a.floor; let x = a.at ? a.at[0] : (fz.x0+fz.x1)/2, z = a.at ? a.at[1] : (fz.z0+fz.z1)/2;
+    if (!a.at && onStage(x, z)){
+      let best = null;
+      for (let i=0;i<=10;i++) for (let j=0;j<=10;j++){ const px = fz.x0 + .8 + (fz.x1-fz.x0-1.6)*i/10, pz = fz.z0 + .8 + (fz.z1-fz.z0-1.6)*j/10; if (onStage(px, pz)) continue; const d = Math.hypot(px-x, pz-z); if (!best || d < best.d) best = {x:px, z:pz, d}; }
+      if (best){ x = best.x; z = best.z; }
+    }
+    return new THREE.Vector3(x, floorEye(), z);
+  }
   return seatPos(current, a.sec, a.row, a.seat).pos;
 }
 function measure(pos){
-  const v = current, dist = pos.distanceTo(v.stageFront), dx = pos.x - v.screenPos.x, dz = pos.z - v.screenPos.z;
+  const v = current, S = v.effS;
+  if (S.type === 'centre'){
+    const horiz = Math.max(1, Math.hypot(pos.x - S.cx, pos.z)), dist = Math.hypot(Math.max(0, horiz - S.width/2), pos.y - S.h);
+    return {dist, ang: 2*Math.atan((S.cubeW/2)/Math.max(1, Math.hypot(horiz, pos.y - S.cubeY)))*180/Math.PI};
+  }
+  const dist = pos.distanceTo(v.stageFront), dx = pos.x - v.screenPos.x, dz = pos.z - v.screenPos.z;
   const horiz = Math.max(1, Math.hypot(dx,dz)), facing = Math.abs(dx)/horiz;
-  return {dist, ang: 2*Math.atan((v.stage.screenW*facing/2)/horiz)*180/Math.PI};
+  return {dist, ang: 2*Math.atan((S.screenW*facing/2)/horiz)*180/Math.PI};
 }
 function showAddress(a, fly){
   lastAddr = a; const pos = addrPos(a), v = current;
@@ -663,14 +780,14 @@ function showAddress(a, fly){
   $('roName').textContent = (a.floor ? '' : (a.sec.kind === 'bowl' ? a.sec.level + ' · ' : '')) + addrTitle(a);
   $('roCat').innerHTML = cat ? `<span class="sw" style="background:${esc(cat.color)}"></span><b>${esc(cat.name)}</b>${cat.price ? ` <em>RM ${esc(cat.price)}</em>` : ''}<em style="margin-left:auto">${esc(layout.name)}</em>` : `<span class="sw" style="background:${NONE_HEX}"></span><span style="color:var(--muted)">No CAT set in this layout</span>`;
   $('roDist').textContent = Math.round(m.dist);
-  $('roHeight').textContent = Math.max(0, pos.y - (a.floor ? 1.72 : 1.15)).toFixed(1);
+  $('roHeight').textContent = Math.max(0, pos.y - (a.floor ? floorEye() : 1.15)).toFixed(1);
   $('roAngle').textContent = m.ang.toFixed(m.ang < 10 ? 1 : 0) + '°';
   const pct = Math.min(100, m.ang/70*100); $('roBar').style.width = pct + '%';
   $('roCap').textContent = `The main screen fills about ${Math.round(pct)}% of a phone photo (1× lens, landscape).`;
   const w = $('roWarn'); let msg = '';
   if (cat && cat.closed) msg = 'This section is closed in this layout, usually because the stage blocks the view.';
-  else if (!a.floor && a.sec.kind === 'bowl' && angFromStage(seatPos(v,a.sec,a.row,a.seat).t) < v.blockHalf) msg = 'Behind the stage. Expect a restricted view of the main screen.';
-  else if (m.ang < 6 && m.dist < 70 && !a.floor) msg = 'Side-on to the main screen. You will rely on the side screens for much of the show.';
+  else if (v.effS.type !== 'centre' && !a.floor && a.sec.kind === 'bowl' && pos.x < v.effS.back && Math.abs(pos.z) < v.effS.width*.9 + 6) msg = 'Behind the stage. Expect a restricted view of the main screen.';
+  else if (v.effS.type !== 'centre' && m.ang < 6 && m.dist < 70 && !a.floor) msg = 'Side-on to the main screen. You will rely on the side screens for much of the show.';
   w.hidden = !msg; w.textContent = msg;
   syncFindForm(a);
 }
@@ -679,7 +796,7 @@ function showAddress(a, fly){
 function fillFindForm(){
   const v = current, sel = $('fSec'); sel.innerHTML = '';
   const fg = document.createElement('optgroup'); fg.label = 'Floor';
-  v.floorZones.forEach(fz => { const o = new Option(fz.name, 'floor:'+fz.key); fg.appendChild(o); }); sel.appendChild(fg);
+  zones().forEach(fz => { const c = catOf(fz.key); fg.appendChild(new Option(fz.name + (c ? ' · ' + c.name : ''), 'floor:'+fz.key)); }); sel.appendChild(fg);
   const levels = [...new Set(v.secs.map(s => s.level))];
   levels.forEach(lv => { const g = document.createElement('optgroup'); g.label = lv; v.secs.filter(s => s.level === lv).forEach(s => { const c = catOf(s.label); g.appendChild(new Option(s.label + (c ? ' · ' + c.name : ''), 'sec:'+s.label)); }); sel.appendChild(g); });
   fillRows();
@@ -687,7 +804,7 @@ function fillFindForm(){
 function fillRows(){
   const v = current, val = $('fSec').value, rs = $('fRow'), seat = $('fSeat');
   rs.innerHTML = '';
-  if (val.startsWith('floor:')){ rs.appendChild(new Option('Standing','0')); rs.disabled = true; seat.disabled = true; $('fSeatLbl').textContent = 'Seat'; return; }
+  if (val.startsWith('floor:')){ rs.appendChild(new Option(floorSeated() ? 'Seated' : 'Standing','0')); rs.disabled = true; seat.disabled = true; $('fSeatLbl').textContent = 'Seat'; return; }
   const sec = v.secByLabel[val.slice(4)]; rs.disabled = false; seat.disabled = false;
   for (let r=0;r<sec.rows;r++) rs.appendChild(new Option(rowLabel(v,sec,r), String(r)));
   fillSeatMax();
@@ -705,7 +822,7 @@ $('fSec').addEventListener('change', fillRows);
 $('fRow').addEventListener('change', fillSeatMax);
 $('findForm').addEventListener('submit', e => {
   e.preventDefault(); const v = current, val = $('fSec').value;
-  if (val.startsWith('floor:')){ showAddress({floor: v.floorZones.find(f => f.key === val.slice(6))}); return; }
+  if (val.startsWith('floor:')){ const z = zones().find(f => f.key === val.slice(6)); if (z) showAddress({floor:z}); return; }
   const sec = v.secByLabel[val.slice(4)], row = +$('fRow').value, n = seatCount(v, sec, row);
   const seat = Math.min(n, Math.max(1, Math.round(+$('fSeat').value || 1))) - 1;
   showAddress({sec, row, seat});
@@ -716,7 +833,11 @@ function renderQuick(){
   const v = current, box = $('zones'); box.innerHTML = '';
   v.quick.forEach(q => {
     let a;
-    if (q.floor) a = {floor: v.floorZones.find(f => f.key === q.floor), at:q.at};
+    if (q.floor){
+      const zs = zones(), exact = zs.find(f => f.key === q.floor), fz = exact || (q.floor === 'FA' ? zs[0] : zs[zs.length-1]);
+      const S = v.effS, at = q.barrier && S.type !== 'centre' ? [S.front + 1.7, 1.5] : (exact ? q.at : null);
+      a = {floor:fz, at};
+    }
     else if (q.sec) a = {sec: v.secByLabel[q.sec], row:q.row, seat:q.seat};
     else {
       const sec = secAtT(v, q.ti, q.t); if (!sec) return;
@@ -733,7 +854,7 @@ function renderQuick(){
 
 /* ================= layout editor UI ================= */
 function toast(msg){ $('lToast').textContent = msg; clearTimeout(toast.t); toast.t = setTimeout(() => $('lToast').textContent = '', 6000); }
-function counts(){ const n = {}; Object.values(layout.map).forEach(c => n[c] = (n[c]||0) + 1); return n; }
+function counts(){ const valid = new Set([...current.secs.map(s => s.label), ...zones().map(z => z.key)]), n = {}; Object.entries(layout.map).forEach(([k,c]) => { if (valid.has(k)) n[c] = (n[c]||0) + 1; }); return n; }
 function fillLayoutUI(){
   const sel = $('lSel'); sel.innerHTML = '';
   sel.appendChild(new Option(current.example.name, current.example.id));
@@ -804,7 +925,7 @@ $('lImg').addEventListener('change', e => {
   rd.onload = () => { const img = new Image(); img.onload = () => {
     const k = Math.min(1, 1600/Math.max(img.width, img.height)), c = document.createElement('canvas');
     c.width = Math.round(img.width*k); c.height = Math.round(img.height*k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-    layout.img = c.toDataURL('image/jpeg', .85); persist(); updatePlan(true); toast('Seat plan added. Use it as a guide while you paint the sections.');
+    layout.img = c.toDataURL('image/jpeg', .85); persist(); updatePlan(true); toast('Seat plan added. Now set the stage and floor below to match it, then paint the CATs.'); $('stageBox').scrollIntoView({block:'nearest', behavior: reduce ? 'auto' : 'smooth'});
   }; img.onerror = () => toast('That file could not be read as an image. Try a PNG or JPG.'); img.src = rd.result; };
   rd.readAsDataURL(f); e.target.value = '';
 });
@@ -819,7 +940,14 @@ $('planBtn').addEventListener('click', () => { $('plan').hidden = !$('plan').hid
 $('planClose').addEventListener('click', () => { $('plan').hidden = true; $('planBtn').classList.remove('on'); });
 $('planImg').addEventListener('click', () => $('plan').classList.toggle('big'));
 
-function layoutCode(L){ return JSON.stringify({seatpov:1, venue:L.venue, name:L.name, rot:L.rot||0, flip:!!L.flip, cats:L.cats, map:L.map}); }
+function layoutCode(L){ const o = {seatpov:1, venue:L.venue, name:L.name, rot:L.rot||0, flip:!!L.flip, cats:L.cats, map:L.map}; if (L.stage) o.stage = L.stage; if (L.floor) o.floor = L.floor; return JSON.stringify(o); }
+function cleanStage(st, v){
+  if (!st || typeof st !== 'object') return undefined; const R = v.stageRange, cl = (x, r) => Math.min(r[1], Math.max(r[0], +x));
+  const o = {}; if (['end','runway','centre'].includes(st.type)) o.type = st.type;
+  if (isFinite(st.width)) o.width = cl(st.width, R.w); if (isFinite(st.depth)) o.depth = cl(st.depth, R.d); if (isFinite(st.runway)) o.runway = cl(st.runway, R.r);
+  return o;
+}
+function cleanFloor(f){ if (!f || typeof f !== 'object') return undefined; return {count: Math.min(4, Math.max(1, Math.round(+f.count) || 1)), split: !!f.split, seated: !!f.seated}; }
 $('lCopy').addEventListener('click', () => {
   const ta = $('lCode'); ta.value = layoutCode(layout);
   const done = () => toast('Layout code copied. Anyone can paste it into SeatPOV with Load code. The seat plan image is not included.');
@@ -832,9 +960,62 @@ $('lLoad').addEventListener('click', () => {
   const cats = d.cats.filter(c => c && typeof c.name === 'string').slice(0,20).map(c => ({name:String(c.name).slice(0,24), color:/^#[0-9a-f]{6}$/i.test(c.color) ? c.color : '#ffb547', price:String(c.price||'').slice(0,10)}));
   const map = {}; Object.entries(d.map).forEach(([k,v]) => { if (typeof v === 'string') map[String(k).slice(0,30)] = v.slice(0,24); });
   const L = {id:uid(), venue:d.venue, name:String(d.name||'Imported layout').slice(0,80), rot:+d.rot||0, flip:!!d.flip, cats, map, img:null};
+  const st = cleanStage(d.stage, VENUES[d.venue]), fl = cleanFloor(d.floor); if (st) L.stage = st; if (fl) L.floor = fl;
   store.layouts.push(L); store.sel[d.venue] = L.id; persist();
   if (current.id !== d.venue) loadVenue(d.venue); else setLayout(L.id);
   $('lCode').value = ''; toast(`Loaded "${L.name}".`);
+});
+
+/* ================= stage and floor editor ================= */
+const mFmt = x => Math.round(x) + ' m';
+function fillStageUI(){
+  const v = current, S = v.effS || effStage(), R = v.stageRange, ed = !layout.example, F = layout.floor;
+  $('stageBox').disabled = !ed;
+  $('sType').querySelector('option[value="centre"]').hidden = !!v.floorArea.noCentre;
+  $('sType').value = S.type;
+  const setR = (id, r, val) => { const el = $(id); el.min = r[0]; el.max = r[1]; el.value = Math.round(val); $(id+'v').textContent = mFmt(val); };
+  setR('sW', R.w, S.width); setR('sD', R.d, S.depth);
+  const rMax = Math.max(R.r[0]+1, Math.min(R.r[1], v.floorArea.xb - (v.stage.back + S.depth) - 6));
+  setR('sR', [R.r[0], rMax], Math.min(S.runway || Math.round(S.width*.4), rMax));
+  $('sDf').hidden = S.type === 'centre'; $('sRf').hidden = S.type !== 'runway';
+  const zs = zones(); $('fzN').value = String(F ? F.count : (zs.length));
+  $('fzSplit').checked = !!(F && F.split); $('fzSeat').checked = floorSeated();
+  $('autoClose').hidden = S.type === 'centre';
+}
+function changeStageFloor(mut){
+  if (layout.example) return;
+  const old = zones();
+  mut();
+  rebuildDynamic();
+  zones().forEach(z => {
+    if (layout.map[z.key] != null) return;
+    const cx = (z.x0+z.x1)/2, cz = (z.z0+z.z1)/2;
+    const o = old.find(q => cx >= q.x0 && cx <= q.x1 && cz >= q.z0 && cz <= q.z1) || old.find(q => cx >= q.x0 && cx <= q.x1) || old[0];
+    if (o && layout.map[o.key] != null) layout.map[z.key] = layout.map[o.key];
+  });
+  persist(); recolorAll(); fillStageUI(); fillLayoutUI(); fillFindForm(); renderQuick();
+  if (lastAddr && lastAddr.floor) lastAddr = null;
+  if (lastAddr) showAddress(lastAddr, false);
+}
+const ensureFloor = () => { if (!layout.floor) layout.floor = {count: zones().length, split:false, seated:false}; };
+const setStage = (k, val) => { layout.stage = {...(layout.stage||{}), [k]: val}; };
+$('sType').addEventListener('change', e => changeStageFloor(() => { setStage('type', e.target.value); ensureFloor(); }));
+[['sW','width'],['sD','depth'],['sR','runway']].forEach(([id,k]) => {
+  $(id).addEventListener('input', e => $(id+'v').textContent = mFmt(+e.target.value));
+  $(id).addEventListener('change', e => changeStageFloor(() => { setStage(k, +e.target.value); ensureFloor(); }));
+});
+$('fzN').addEventListener('change', e => changeStageFloor(() => { ensureFloor(); layout.floor.count = +e.target.value; }));
+$('fzSplit').addEventListener('change', e => changeStageFloor(() => { ensureFloor(); layout.floor.split = e.target.checked; }));
+$('fzSeat').addEventListener('change', e => changeStageFloor(() => { ensureFloor(); layout.floor.seated = e.target.checked; }));
+$('autoClose').addEventListener('click', () => {
+  if (layout.example) return; const v = current, S = v.effS; let n = 0;
+  v.secs.forEach(sec => {
+    if (sec.kind !== 'bowl') return;
+    const r = Math.floor(sec.rows/2), p = seatPos(v, sec, r, Math.floor(seatCount(v, sec, r)/2)).pos;
+    if (p.x < S.back + S.depth*.3 && Math.abs(p.z) < S.width*.9 + 6){ if (layout.map[sec.label] !== 'Closed'){ layout.map[sec.label] = 'Closed'; n++; } }
+  });
+  persist(); recolorAll(); fillLayoutUI(); fillFindForm(); renderQuick();
+  toast(n ? `Closed ${n} section${n > 1 ? 's' : ''} behind the stage. Paint any you want to reopen.` : (v.secs.some(s => s.kind === 'bowl') ? 'No more sections sit behind the stage.' : 'This venue has no seating behind the stage.'));
 });
 
 /* ================= venue switching ================= */
@@ -849,12 +1030,12 @@ function loadVenue(id){
   const v = VENUES[id]; if (current === v) return;
   if (painting) togglePaint(false);
   if (group){ scene.remove(group); disposeTree(group); }
-  current = v; pickables = []; recolorers = []; floorMeshes = []; labelGroup = null; group = new THREE.Group(); led = null; sticks = null; lastAddr = null;
-  stageInfo(v);
+  current = v; pickables = []; basePick = []; recolorers = []; floorMeshes = []; labelGroup = null; dyn = null; group = new THREE.Group(); led = null; stickSets = []; dynSticks = null; lastAddr = null;
   layout = {rot:0, flip:false, map:{}, cats:[]}; buildSections(v);
   if (!v.example) v.example = exampleLayout(v);
   layout = v.example; buildSections(v);
   if (id === 'zepp') buildZepp(v, group); else buildBowlVenue(v, group);
+  basePick = pickables.slice();
   scene.add(group);
   scene.fog = new THREE.Fog(scene.background.getHex(), v.overview.r*1.6, v.overview.r*4);
   ORDER.forEach(k => $('tab-'+k).setAttribute('aria-selected', k === id ? 'true' : 'false'));
@@ -874,7 +1055,7 @@ function loadVenue(id){
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 function addressFromHit(hit){
   const u = hit.object.userData, p = hit.point, v = current;
-  if (u.kind === 'floor') return {floor:u.fz, at:[p.x, p.z]};
+  if (u.kind === 'floor') return onStage(p.x, p.z) ? null : {floor:u.fz, at:[p.x, p.z]};
   if (u.kind === 'bowl'){
     const T = v.tiers[u.ti], row = Math.max(0, Math.min(T.rows-1, Math.round((p.y - T.y0)/T.rise)));
     const d = T.d0 + (row+.5)*T.rowDepth, t = invT(p.x, p.z, v.loop.a+d, v.loop.b+d, v.loop.n);
@@ -948,7 +1129,7 @@ function tick(now){
   if (!reduce){
     if (++frame % 4 === 0) drawLED(t);
     cones.forEach(p => { p.rotation.z = Math.sin(t*.7 + p.userData.phase)*.45; p.rotation.x = .25 + Math.sin(t*.5 + p.userData.phase)*.2; });
-    if (sticks) sticks.material.opacity = .7 + Math.sin(t*3)*.15;
+    const op = .7 + Math.sin(t*3)*.15; stickSets.forEach(p => p.material.opacity = op); if (dynSticks) dynSticks.material.opacity = op;
   }
   renderer.render(scene, camera);
 }
@@ -958,3 +1139,5 @@ loadVenue(VENUES[start] ? start : 'stadium');
 requestAnimationFrame(tick);
 })();
 </script>
+</body>
+</html>
