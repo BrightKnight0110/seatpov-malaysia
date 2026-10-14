@@ -25,7 +25,3 @@ Layouts are saved in your own browser only. The seat plan image is not included 
 ## Accuracy
 
 The venue models are approximate and built from public figures, not official drawings. Section numbers follow each venue's published scheme, but their exact positions, row counts and seat counts are estimates. Always check the organiser's official seating plan before buying.
-
-## Tech
-
-A single `index.html` using [three.js](https://threejs.org/) r128 from cdnjs. There is no build step. Edit the file and push, and GitHub Pages redeploys in about a minute.
